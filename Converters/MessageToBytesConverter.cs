@@ -10,7 +10,7 @@ namespace IOTA_Chat_Server.Converters
     public static class MessageToBytesConverter
     {
 
-        public static byte[] MessageToByte(Message message)
+        public static byte[] MessageToBytes(Message message)
         {
             if (message == null) throw new ArgumentNullException("message");
 
