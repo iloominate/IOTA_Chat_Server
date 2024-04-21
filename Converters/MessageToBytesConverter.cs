@@ -9,7 +9,8 @@ namespace IOTA_Chat_Server.Converters
 {
     public static class MessageToBytesConverter
     {
-
+        private static readonly int M_TYPE_BYTE_SIZE = 1;
+        private static readonly int ID_BYTE_SIZE = 2;
         public static byte[] MessageToBytes(Message message)
         {
             if (message == null) throw new ArgumentNullException("message");
@@ -37,8 +38,8 @@ namespace IOTA_Chat_Server.Converters
                         byte[] displaynameBytes = Encoding.ASCII.GetBytes(message.DisplayName);
                         byte[] secretBytes = Encoding.ASCII.GetBytes(message.Secret);
 
-                        // mType + mId + null bytes = 1 + 2 + 3
-                        int mLength = 1 + 2 + 3 + usernameBytes.Length + displaynameBytes.Length + secretBytes.Length;
+                        // null bytes = 3
+                        int mLength = M_TYPE_BYTE_SIZE + ID_BYTE_SIZE + 3 + usernameBytes.Length + displaynameBytes.Length + secretBytes.Length;
                         byte[] messageBytes = new byte[mLength];
 
                         // index for copying data to messageBytes
@@ -89,8 +90,8 @@ namespace IOTA_Chat_Server.Converters
 
                         byte[] displaynameBytes = Encoding.ASCII.GetBytes(message.DisplayName);
 
-                        // mType + mId + null bytes = 1 + 2 + 2
-                        int mLength = 1 + 2 + 2 + channelIdBytes.Length + displaynameBytes.Length;
+                        // null bytes = 2
+                        int mLength = M_TYPE_BYTE_SIZE + ID_BYTE_SIZE + 2 + channelIdBytes.Length + displaynameBytes.Length;
                         byte[] messageBytes = new byte[mLength];
 
                         // index for copying data to messageBytes
@@ -121,8 +122,8 @@ namespace IOTA_Chat_Server.Converters
                         byte[] displaynameBytes = Encoding.ASCII.GetBytes(message.DisplayName);
                         byte[] contentsBytes = Encoding.ASCII.GetBytes(message.Content);
 
-                        // mType + mId + null bytes = 1 + 2 + 2
-                        int mLength = 1 + 2 + 2 + displaynameBytes.Length + contentsBytes.Length;
+                        // null bytes = 2
+                        int mLength = M_TYPE_BYTE_SIZE + ID_BYTE_SIZE + 2 + displaynameBytes.Length + contentsBytes.Length;
                         byte[] messageBytes = new byte[mLength];
 
                         // index for copying data to messageBytes
@@ -154,8 +155,8 @@ namespace IOTA_Chat_Server.Converters
                         byte[] displaynameBytes = Encoding.ASCII.GetBytes(message.DisplayName);
                         byte[] contentsBytes = Encoding.ASCII.GetBytes(message.Content);
 
-                        // mType + mId + null bytes = 1 + 2 + 2
-                        int mLength = 1 + 2 + 2 + displaynameBytes.Length + contentsBytes.Length;
+                        // null bytes = 2
+                        int mLength = M_TYPE_BYTE_SIZE + ID_BYTE_SIZE + 2 + displaynameBytes.Length + contentsBytes.Length;
                         byte[] messageBytes = new byte[mLength];
 
                         // index for copying data to messageBytes
@@ -184,7 +185,7 @@ namespace IOTA_Chat_Server.Converters
                 // |  0xFF  |    MessageID    |
                 case MessageType.BYE:
                     {
-                        int mLength = 1 + 2;
+                        int mLength = M_TYPE_BYTE_SIZE + ID_BYTE_SIZE;
                         byte[] messageBytes = new byte[mLength];
 
                         // index for copying data to messageBytes
@@ -212,7 +213,7 @@ namespace IOTA_Chat_Server.Converters
                             // If the system is little-endian, reverse the byte order
                             Array.Reverse(idBytes);
                         }
-                        int mLength = 1 + 2;
+                        int mLength = M_TYPE_BYTE_SIZE + ID_BYTE_SIZE;
                         byte[] messageBytes = new byte[mLength];
 
                         // index for copying data to messageBytes
@@ -224,6 +225,52 @@ namespace IOTA_Chat_Server.Converters
 
 
                         Array.Copy(idBytes, 0, messageBytes, arrIndex, idBytes.Length);
+                        return messageBytes;
+                    }
+                // | 0x01 | MessageID | Result | Ref_MessageID | MessageContents | 0 |
+                case MessageType.REPLY:
+                    {
+                        bool res = message.Result ?? throw new NullReferenceException();
+                        byte resultByte = res ? (byte)1 : (byte)0;
+
+                        byte[] refIdBytes = new byte[2];
+
+                        byte[] contentsBytes = Encoding.ASCII.GetBytes(message.Content);
+                        if (BitConverter.TryWriteBytes(refIdBytes, message.RefId ?? throw new NullReferenceException("Ref id is null"))
+                            == false)
+                        {
+                            throw new Exception("Unable to convert message id to bytes");
+                        }
+
+
+                        // null bytes = 2
+                        int mLength = M_TYPE_BYTE_SIZE + ID_BYTE_SIZE + 1 + refIdBytes.Length + contentsBytes.Length + 1;
+                        byte[] messageBytes = new byte[mLength];
+
+                        // index for copying data to messageBytes
+                        int arrIndex = 0;
+
+
+                        messageBytes[arrIndex] = messageTypeByte;
+                        arrIndex += 1;
+
+
+                        Array.Copy(idBytes, 0, messageBytes, arrIndex, idBytes.Length);
+                        arrIndex += idBytes.Length;
+
+                        messageBytes[arrIndex] = resultByte;
+                        arrIndex += 1;
+
+                        Array.Copy(refIdBytes, 0, messageBytes, arrIndex, refIdBytes.Length);
+                        arrIndex += refIdBytes.Length;
+
+                        messageBytes[arrIndex] = 0;
+                        arrIndex += 1;
+
+                        Array.Copy(contentsBytes, 0, messageBytes, arrIndex, contentsBytes.Length);
+                        arrIndex += contentsBytes.Length;
+
+                        messageBytes[arrIndex] = 0;
                         return messageBytes;
                     }
                 default:
@@ -355,7 +402,7 @@ namespace IOTA_Chat_Server.Converters
             }
             catch (Exception ex)
             {
-                UdpData.UdpHandleLocalErr(ex.Message);
+                // Wrong packet format
             }
             return inputMessage;
         }
