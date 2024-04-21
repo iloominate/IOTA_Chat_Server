@@ -78,8 +78,7 @@ namespace IOTA_Chat_Server
 
 
             UdpClient udpListener = new UdpClient();
-            var EP = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 4567);
-            udpListener.Client.Bind(EP);
+            udpListener.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
            
             TcpListener tcpListener = new TcpListener(IPAddress.Any, 4567);
 
@@ -238,7 +237,57 @@ namespace IOTA_Chat_Server
                                 }
                                 else
         {
-            Console.WriteLine("Hello, World!");
+                                    Console.WriteLine("CLIENT IS AUTHENTICATED");
+                                    // send false 
+                                }
+                                break;
+                            }
+                        case MessageType.MSG:
+                            {
+                                if (client.State == ClientState.AUTH)
+                                {
+                                    await SendMessageToChannelAsync(client, messageToProcess);
+                                }
+                                else
+                                {
+                                    // ignore 
+                                }
+                                break;
+                            }
+                        case MessageType.JOIN:
+                            {
+                                if (client.State == ClientState.AUTH)
+                                {
+
+                                }
+                                else
+                                {
+                                    // ignore
+                                }
+                                break;
+                            }
+                        case MessageType.BYE:
+                            {
+                                // Send confirm, send buy, close connection
+                                return;
+                                break;
+                            }
+                        case MessageType.CONFIRM:
+                            {
+                                client.ClientConfirms.Add(messageToProcess);
+                                break;
+                            }
+                        case MessageType.ERR:
+                            {
+                                // Gracefully exit by sending BYE
+                                return;
+                            }
+                    }
+                } else
+                {
+                    await Task.Delay(10);
+                }
+            }
         }
     }
 
