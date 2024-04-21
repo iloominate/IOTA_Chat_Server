@@ -32,6 +32,29 @@ namespace IOTA_Chat_Server.Converters
             }
         }
 
+        public static string MTypeToString(MessageType type)
+        {
+            switch (type)
+            {
+                case MessageType.CONFIRM:
+                    return "CONFIRM";
+                case MessageType.REPLY:
+                    return "REPLY";
+                case MessageType.AUTH:
+                    return "AUTH";
+                case MessageType.JOIN:
+                    return "JOIN";
+                case MessageType.MSG:
+                    return "MSG";
+                case MessageType.ERR:
+                    return "ERR";
+                case MessageType.BYE:
+                    return "BYE";
+                default:
+                    throw new ArgumentException("Unexpected message type");
+            }
+        }
+
         public static MessageType ByteToMType(byte type)
         {
             switch (type)

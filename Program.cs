@@ -131,6 +131,18 @@ namespace IOTA_Chat_Server
             client.Exit = true;
             var listener = Task.Run(() => ListenerAsync(client));
         }
+        public static void LogMessageReceived(IPEndPoint clientEP, Message msg)
+        {
+            // RECV {FROM_IP}:{FROM_PORT} | {MESSAGE_TYPE}[MESSAGE_CONTENTS]\n
+            string msgType = MTypeToBytesConverter.MTypeToString(msg.Type);
+            Console.WriteLine($"RECV {clientEP.Address.ToString()}:{clientEP.Port} | {msgType}{msg.Content}");
+        }
+        public static void LogMessageSent(IPEndPoint clientEP, Message msg)
+        {
+            // SENT {FROM_IP}:{FROM_PORT} | {MESSAGE_TYPE}[MESSAGE_CONTENTS]\n
+            string msgType = MTypeToBytesConverter.MTypeToString(msg.Type);
+            Console.WriteLine($"SENT {clientEP.Address.ToString()}:{clientEP.Port} | {msgType}{msg.Content}");
+        }
         public static async Task ListenerAsync(Client client)
         {
             Console.WriteLine("Listening on port");
