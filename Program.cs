@@ -131,6 +131,38 @@ namespace IOTA_Chat_Server
             client.Exit = true;
             var listener = Task.Run(() => ListenerAsync(client));
         }
+
+
+        public static async Task<bool> SendAndWaitForConfirmAsync(Client client, Message msg)
+        {
+            Console.WriteLine("I'm sending and waiting for reply");
+            byte[] msgBytes = MessageToBytesConverter.MessageToBytes(msg);
+            for (int i = 0; i < udpRetransmissionLimit + 1; i++)
+            {
+                await client.ServerEndPoint.SendAsync(msgBytes, client.ClientEndPoint);
+                Message? existingMessage = null;
+                Task getResponse = Task.Run(() =>
+                {
+                    while (true)
+                    {
+                        var confirmList = client.ClientConfirms.TakeWhile(c => c.RefId == msg.RefId);
+                        existingMessage = confirmList.First();
+                        if (existingMessage != null)
+                            break;
+                        Task.Delay(10);
+                    }
+                });
+                Task waitForDelay = Task.Delay(udpRetransmissionTimeout);
+                Task firstCompleted = await Task.WhenAny(getResponse, waitForDelay);
+                if (getResponse.IsCompletedSuccessfully && existingMessage != null)
+                {
+
+                    return true;
+                }
+            }
+            return false; 
+        }
+
         public static async Task SendConfirmAsync(ushort refId, UdpClient server, IPEndPoint clientEP)
         {
             Message confirmM = new Message(0, MessageType.CONFIRM);
