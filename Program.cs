@@ -78,7 +78,7 @@ namespace IOTA_Chat_Server
 
 
             UdpClient udpListener = new UdpClient();
-            udpListener.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
+            udpListener.Client.Bind(new IPEndPoint(IPAddress.Parse(listeningIP??"0.0.0.0"), 4567));
            
             TcpListener tcpListener = new TcpListener(IPAddress.Any, 4567);
 
@@ -87,10 +87,8 @@ namespace IOTA_Chat_Server
             {
                 while (true)
                 {
-                    Console.WriteLine("Waiting for the first packet");
 
                     UdpReceiveResult result = await udpListener.ReceiveAsync();
-                    Console.WriteLine("Packet has arrived");
                     ProcessMessage(result);
                     
                 }
@@ -134,11 +132,11 @@ namespace IOTA_Chat_Server
 
         public static async Task<bool> SendAndWaitForConfirmAsync(Client client, Message msg)
         {
-            Console.WriteLine("I'm sending and waiting for reply");
             byte[] msgBytes = MessageToBytesConverter.MessageToBytes(msg);
             for (int i = 0; i < udpRetransmissionLimit + 1; i++)
             {
                 await client.ServerEndPoint.SendAsync(msgBytes, client.ClientEndPoint);
+                LogMessageSent(client.ClientEndPoint, msg);
                 Message? existingMessage = null;
                 Task getResponse = Task.Run(() =>
                 {
@@ -184,11 +182,9 @@ namespace IOTA_Chat_Server
         }
         public static async Task ListenerAsync(Client client)
         {
-            Console.WriteLine("Listening on port");
             while (client.Exit != true)
             {
                 UdpReceiveResult receiveResult = await client.ServerEndPoint.ReceiveAsync();
-                Console.WriteLine("Message received");
                 Message newMessage = MessageToBytesConverter.BytesToMessage(receiveResult.Buffer);
                 client.MessagesUprocessed.Add(newMessage);
 
@@ -209,10 +205,8 @@ namespace IOTA_Chat_Server
                     {
                         case MessageType.AUTH:
                             {
-                                Console.WriteLine("CLIENT MESSAGE IS AUTH");
                                 if (client.State == ClientState.NONAUTH)
                                 {
-                                    Console.WriteLine("CLIENT IS NOT AUTHENTICATED");
                                     if (client.Username == null)
                                     {
                                         client.Username = messageToProcess.Username;
