@@ -131,6 +131,14 @@ namespace IOTA_Chat_Server
             client.Exit = true;
             var listener = Task.Run(() => ListenerAsync(client));
         }
+        public static async Task SendConfirmAsync(ushort refId, UdpClient server, IPEndPoint clientEP)
+        {
+            Message confirmM = new Message(0, MessageType.CONFIRM);
+            confirmM.RefId = refId;
+            byte[] msgBytes = MessageToBytesConverter.MessageToBytes(confirmM);
+            await server.SendAsync(msgBytes, clientEP);
+            LogMessageSent(clientEP, confirmM);
+        }
         public static void LogMessageReceived(IPEndPoint clientEP, Message msg)
         {
             // RECV {FROM_IP}:{FROM_PORT} | {MESSAGE_TYPE}[MESSAGE_CONTENTS]\n
