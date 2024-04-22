@@ -16,7 +16,7 @@ namespace IOTA_Chat_Server
 {
     internal class Program
     {
-        private static ConcurrentQueue<Client> clients = new ConcurrentQueue<Client>();
+        private static ConcurrentDictionary<string, Client> clients = new ConcurrentDictionary<string, Client>();
         public static byte udpRetransmissionLimit = 3;
         public static UInt16 udpRetransmissionTimeout = 250;
         private static string defaultChannelId = "default"; 
@@ -129,7 +129,7 @@ namespace IOTA_Chat_Server
                 Console.WriteLine($"{e}");
                 return;
             }
-
+            LogMessageReceived(result.RemoteEndPoint, messageParsed);
             // Client creation
             IPEndPoint clientEP = result.RemoteEndPoint;
             UdpClient? localEP = new UdpClient();
@@ -217,18 +217,23 @@ namespace IOTA_Chat_Server
             await server.SendAsync(msgBytes, clientEP);
             LogMessageSent(clientEP, confirmM);
         }
-        public static async Task SendMessageToChannelAsync(string channelId, Message msg)
+        public static async Task SendMessageToChannelAsync(Client sender, Message msg)
         {
     
-            IEnumerable<Client> recipients = clients.Where(c => c.CurrentChannelName == channelId);
+            var recipients = clients.Where(pair => pair.Value.CurrentChannelName == sender.CurrentChannelName);
 
             foreach (Client recipient in recipients)
             {
-                bool messageConfirmed = await SendAndWaitForConfirmAsync(recipient, msg);
+                // Ingore the sender
+                if (pair.Value == sender) continue;
+                bool messageConfirmed = await SendAndWaitForConfirmAsync(pair.Value, msg);
                 if (!messageConfirmed)
                 {
                     // close connection with client
                 }
+            }
+        }
+
         public static async Task GracefullExit()
         {
             foreach (var pair in clients)
@@ -239,13 +244,12 @@ namespace IOTA_Chat_Server
         }
         public static void LogMessageReceived(IPEndPoint clientEP, Message msg)
         {
-            // RECV {FROM_IP}:{FROM_PORT} | {MESSAGE_TYPE}[MESSAGE_CONTENTS]\n
+
             string msgType = MTypeToBytesConverter.MTypeToString(msg.Type);
             Console.WriteLine($"RECV {clientEP.Address.ToString()}:{clientEP.Port} | {msgType} {msg.Content}");
         }
         public static void LogMessageSent(IPEndPoint clientEP, Message msg)
         {
-            // SENT {FROM_IP}:{FROM_PORT} | {MESSAGE_TYPE}[MESSAGE_CONTENTS]\n
             string msgType = MTypeToBytesConverter.MTypeToString(msg.Type);
             Console.WriteLine($"SENT {clientEP.Address.ToString()}:{clientEP.Port} | {msgType} {msg.Content}");
         }
@@ -262,10 +266,16 @@ namespace IOTA_Chat_Server
                 }
                 else
                 {
+                    // Check if the message was already processed
+                    if (client.ServerConfirmIds.Any(id => id == newMessage.Id) == false)
+                    {
+                        client.ServerConfirmIds.Add(newMessage.Id);
                 client.MessagesUprocessed.Add(newMessage);
             }
         }
         }
+        }
+
         public static async Task SenderAsync(Client client)
         {
 
@@ -286,10 +296,12 @@ namespace IOTA_Chat_Server
                                     if (client.Username == null)
                                     {
                                         client.Username = messageToProcess.Username;
+                                        clients.TryAdd(client.Username, client);
                                     }
 
+                                    client.State = ClientState.AUTH;
                                     client.Displayname = messageToProcess.DisplayName;
-                                    await HandleJoinAsync(client, defaultChannelId, messageToProcess.Id, "Success! You are authenticated");
+                                    await HandleJoinAsync(client, defaultChannelId, messageToProcess.Id, "You are authenticated");
                                 }
                                 break;
                             }
@@ -297,9 +309,9 @@ namespace IOTA_Chat_Server
                             {
                                 if (client.State == ClientState.AUTH)
                                 {
-                                    await SendMessageToChannelAsync(client.CurrentChannelName, messageToProcess);
-                                }
-                                else
+                                    if (messageToProcess.DisplayName != null)
+                                        client.Displayname = messageToProcess.DisplayName;
+                                    await SendMessageToChannelAsync(client, messageToProcess);
                                 {
                                     // ignore 
                                 }
