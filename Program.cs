@@ -100,22 +100,10 @@ namespace IOTA_Chat_Server
             TcpListener tcpListener = new TcpListener(IPAddress.Any, 4567);
 
             
-            try
+            while (true)
             {
-                while (true)
-                {
-
-                    UdpReceiveResult result = await udpListener.ReceiveAsync();
-                    ProcessMessage(result);
-                    
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
-            finally
-            { 
+                UdpReceiveResult result = await udpListener.ReceiveAsync();
+                ProcessMessage(result);
             }
         }
 
@@ -129,140 +117,23 @@ namespace IOTA_Chat_Server
                 messageParsed = MessageToBytesConverter.BytesToMessage(result.Buffer);
             } catch (MessageConvertException e) // Unknown message was caught
             {
-                Console.WriteLine($"{e}");
                 return;
             }
             LogMessageReceived(result.RemoteEndPoint, messageParsed);
+
+
             // Client creation
             IPEndPoint clientEP = result.RemoteEndPoint;
             UdpClient? localEP = new UdpClient();
             localEP.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
-
             Client? client = new Client(clientEP, localEP);
 
             client.MessagesUprocessed.Add(messageParsed);
+
             var sender = Task.Run(() => SenderAsync(client));
             var listener = Task.Run(() => ListenerAsync(client));
         }
 
-        static async Task HandleJoinAsync(Client client, string channelId, ushort refId, string replyContent)
-        {
-            // Check if broadcasting is needed
-            if (client.CurrentChannelName == channelId)
-            {
-                // Send Reply
-                Message msg = new Message(client.messageId++, MessageType.REPLY);
-                msg.Result = true;
-                msg.Content = "You are already in this channel";
-                msg.RefId = refId;
-                bool confirmArrived = await SendAndWaitForConfirmAsync(client, msg);
-            } else
-            {
-                // Send Reply
-                Message replyMessage = new Message(client.messageId++, MessageType.REPLY);
-                replyMessage.Result = true;
-                replyMessage.Content = replyContent;
-                replyMessage.RefId = refId;
-                bool confirmArrived = await SendAndWaitForConfirmAsync(client, replyMessage);
-
-
-                // Check if user was in the channel before
-                if (client.CurrentChannelName != null)
-                {
-                    // Create left message
-                    Message msgLeft = new Message(client.messageId++, MessageType.MSG);
-                    msgLeft.Content = $"{client.Displayname} has left {client.CurrentChannelName}.";
-                    msgLeft.DisplayName = client.Displayname;
-                    // Broadcast left message
-                    await SendMessageToChannelAsync(client, msgLeft);
-                }
-
-                client.CurrentChannelName = channelId;
-
-                // Create join message
-                client.CurrentChannelName = channelId;
-                Message msgJoin = new Message(client.messageId++, MessageType.MSG);
-                msgJoin.Content = $"{client.Displayname} has joined {channelId}.";
-                msgJoin.DisplayName = client.Displayname;
-
-                // Send join message to original sender 
-                await SendAndWaitForConfirmAsync(client, msgJoin);
-                // Broadcast join message
-                await SendMessageToChannelAsync(client, msgJoin);
-            }
-        }
-
-
-        public static async Task<bool> SendAndWaitForConfirmAsync(Client client, Message msg)
-        {
-
-            byte[] msgBytes = MessageToBytesConverter.MessageToBytes(msg);
-            for (int i = 0; i < udpRetransmissionLimit + 1; i++)
-            {
-                await client.ServerEndPoint.SendAsync(msgBytes, client.ClientEndPoint);
-                LogMessageSent(client.ClientEndPoint, msg);
-
-                Message? existingMessage = null;
-
-                Task getConfirm = Task.Run(() => { existingMessage = client.ClientConfirms.Take(); });  
-                Task delay = Task.Delay(udpRetransmissionTimeout); 
-                Task firstCompleted = await Task.WhenAny(getConfirm, delay); 
-                if (firstCompleted == getConfirm && getConfirm.IsCompletedSuccessfully && existingMessage != null)
-                {
-                    return true;
-                }
-            }
-            return false; 
-        }
-
-        public static async Task SendConfirmAsync(ushort refId, UdpClient server, IPEndPoint clientEP)
-        {
-            Message confirmM = new Message(0, MessageType.CONFIRM);
-            confirmM.RefId = refId;
-            byte[] msgBytes = MessageToBytesConverter.MessageToBytes(confirmM);
-            await server.SendAsync(msgBytes, clientEP);
-            LogMessageSent(clientEP, confirmM);
-        }
-        public static async Task SendMessageToChannelAsync(Client sender, Message msg)
-        {
-    
-            var recipients = clients.Where(pair => pair.Value.CurrentChannelName == sender.CurrentChannelName);
-
-            foreach (var pair in recipients)
-            {
-                // Ingore the sender
-                if (pair.Value == sender) continue;
-                bool messageConfirmed = await SendAndWaitForConfirmAsync(pair.Value, msg);
-                if (!messageConfirmed)
-                {
-                    // close connection with client
-                }
-            }
-        }
-
-        public static async Task GracefullExit()
-        {
-            foreach (var pair in clients)
-            {
-                Message byeMsg = new Message(pair.Value.messageId++, MessageType.BYE);
-                await SendAndWaitForConfirmAsync(pair.Value, byeMsg);
-            }
-        }
-        public static async Task GracefullFinishClient(UdpClient server, IPEndPoint clientEP)
-        {
-        }
-
-        public static void LogMessageReceived(IPEndPoint clientEP, Message msg)
-        {
-
-            string msgType = MTypeToBytesConverter.MTypeToString(msg.Type);
-            Console.WriteLine($"RECV {clientEP.Address.ToString()}:{clientEP.Port} | {msgType} {msg.Content}");
-        }
-        public static void LogMessageSent(IPEndPoint clientEP, Message msg)
-        {
-            string msgType = MTypeToBytesConverter.MTypeToString(msg.Type);
-            Console.WriteLine($"SENT {clientEP.Address.ToString()}:{clientEP.Port} | {msgType} {msg.Content}");
-        }
         public static async Task ListenerAsync(Client client)
         {
             while (client.Exit != true)
@@ -281,7 +152,7 @@ namespace IOTA_Chat_Server
                     {
                         client.ServerConfirmIds.Add(newMessage.Id);
                         client.MessagesUprocessed.Add(newMessage);
-                    }    
+                    }
                 }
             }
         }
@@ -289,7 +160,7 @@ namespace IOTA_Chat_Server
         public static async Task SenderAsync(Client client)
         {
 
-            while (client.Exit != true || client.MessagesUprocessed.Count > 0)
+            while (client.Exit != true)
             {
                 if (client.MessagesUprocessed.Count > 0)
                 {
@@ -358,7 +229,7 @@ namespace IOTA_Chat_Server
                             }
                         case MessageType.ERR:
                             {
-                                
+
                                 // Send bye
                                 Message byeMsg = new Message(client.messageId++, MessageType.BYE);
                                 await SendAndWaitForConfirmAsync(client, byeMsg);
@@ -379,12 +250,134 @@ namespace IOTA_Chat_Server
                                 return;
                             }
                     }
-                } else
+                }
+                else
                 {
                     await Task.Delay(10);
                 }
             }
+            clients.TryRemove(client.Username, out _);
         }
+
+        static async Task HandleJoinAsync(Client client, string channelId, ushort refId, string replyContent)
+        {
+            // Check if broadcasting is needed
+            if (client.CurrentChannelName == channelId)
+            {
+                // Send Reply
+                Message msg = new Message(client.messageId++, MessageType.REPLY);
+                msg.Result = true;
+                msg.Content = "You are already in this channel";
+                msg.RefId = refId;
+                if (await SendAndWaitForConfirmAsync(client, msg) == false)
+                    return;
+            } else
+            {
+                // Send Reply
+                Message replyMessage = new Message(client.messageId++, MessageType.REPLY);
+                replyMessage.Result = true;
+                replyMessage.Content = replyContent;
+                replyMessage.RefId = refId;
+                if (await SendAndWaitForConfirmAsync(client, replyMessage) == false)
+                    return;
+
+
+                // Check if user was in the channel before
+                if (client.CurrentChannelName != null)
+                {
+                    // Create left message
+                    Message msgLeft = new Message(client.messageId++, MessageType.MSG);
+                    msgLeft.Content = $"{client.Displayname} has left {client.CurrentChannelName}.";
+                    msgLeft.DisplayName = client.Displayname;
+                    // Broadcast left message
+                    await SendMessageToChannelAsync(client, msgLeft);
+                }
+
+                client.CurrentChannelName = channelId;
+
+                // Create join message
+                client.CurrentChannelName = channelId;
+                Message msgJoin = new Message(client.messageId++, MessageType.MSG);
+                msgJoin.Content = $"{client.Displayname} has joined {channelId}.";
+                msgJoin.DisplayName = client.Displayname;
+
+                // Send join message to original sender 
+                if (await SendAndWaitForConfirmAsync(client, msgJoin) == false)
+                    return;
+                // Broadcast join message
+                await SendMessageToChannelAsync(client, msgJoin);
+            }
+        }
+
+
+        public static async Task<bool> SendAndWaitForConfirmAsync(Client client, Message msg)
+        {
+
+            byte[] msgBytes = MessageToBytesConverter.MessageToBytes(msg);
+            for (int i = 0; i < udpRetransmissionLimit + 1; i++)
+            {
+                await client.ServerEndPoint.SendAsync(msgBytes, client.ClientEndPoint);
+                LogMessageSent(client.ClientEndPoint, msg);
+
+                Message? existingMessage = null;
+
+                Task getConfirm = Task.Run(() => { existingMessage = client.ClientConfirms.Take(); });  
+                Task delay = Task.Delay(udpRetransmissionTimeout); 
+                Task firstCompleted = await Task.WhenAny(getConfirm, delay); 
+                if (firstCompleted == getConfirm && getConfirm.IsCompletedSuccessfully && existingMessage != null)
+                {
+                    return true;
+                }
+            }
+            client.Exit = true;
+            return false; 
+        }
+
+        public static async Task SendConfirmAsync(ushort refId, UdpClient server, IPEndPoint clientEP)
+        {
+            Message confirmM = new Message(0, MessageType.CONFIRM);
+            confirmM.RefId = refId;
+            byte[] msgBytes = MessageToBytesConverter.MessageToBytes(confirmM);
+            await server.SendAsync(msgBytes, clientEP);
+            LogMessageSent(clientEP, confirmM);
+        }
+        public static async Task SendMessageToChannelAsync(Client sender, Message msg)
+        {
+    
+            var recipients = clients.Where(pair => pair.Value.CurrentChannelName == sender.CurrentChannelName);
+
+            foreach (var pair in recipients)
+            {
+                // Ingore the sender
+                if (pair.Value == sender) continue;
+
+                await SendAndWaitForConfirmAsync(pair.Value, msg);
+            }
+        }
+
+        public static async Task GracefullExit()
+        {
+            foreach (var pair in clients)
+            {
+                Message byeMsg = new Message(pair.Value.messageId++, MessageType.BYE);
+                await SendAndWaitForConfirmAsync(pair.Value, byeMsg);
+            }
+        }
+
+        
+
+        public static void LogMessageReceived(IPEndPoint clientEP, Message msg)
+        {
+
+            string msgType = MTypeToBytesConverter.MTypeToString(msg.Type);
+            Console.WriteLine($"RECV {clientEP.Address.ToString()}:{clientEP.Port} | {msgType} {msg.Content}");
+        }
+        public static void LogMessageSent(IPEndPoint clientEP, Message msg)
+        {
+            string msgType = MTypeToBytesConverter.MTypeToString(msg.Type);
+            Console.WriteLine($"SENT {clientEP.Address.ToString()}:{clientEP.Port} | {msgType} {msg.Content}");
+        }
+
     }
 
 }
