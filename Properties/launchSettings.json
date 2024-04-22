@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "IOTA_Chat_Server": {
-      "commandName": "Project",
-      "commandLineArgs": "-l 0.0.0.0 -p 4567 -d 250 -r 3"
-    }
-  }
-}
