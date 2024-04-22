@@ -76,13 +76,7 @@ namespace IOTA_Chat_Server.Converters
                 // |  0x03  |    MessageID    |  ChannelID | 0 |  DisplayName  | 0 |
                 case MessageType.JOIN:
                     {
-                        byte[] channelIdBytes = new byte[2];
-
-                        if (BitConverter.TryWriteBytes(channelIdBytes, message.ChannelID ?? throw new NullReferenceException())
-                            == false)
-                        {
-                            throw new Exception("Unable to convert message id to bytes");
-                        }
+                        byte[] channelIdBytes = Encoding.ASCII.GetBytes(message.ChannelID);
 
                         if (BitConverter.IsLittleEndian)
                         {
@@ -435,6 +429,37 @@ namespace IOTA_Chat_Server.Converters
                                 counter++;
                             }
                             inputMessage.Secret = Encoding.ASCII.GetString(sercretBytes.ToArray());
+                            break;
+                        }
+                    // |  0x03  |    MessageID    |  ChannelID | 0 |  DisplayName  | 0 |
+                    case MessageType.JOIN:
+                        {
+                            byte[] messageId = new byte[] { msgBytes[1], msgBytes[2] };
+                            if (BitConverter.IsLittleEndian)
+                            {
+                                // Reverse the byte order
+                                Array.Reverse(messageId);
+                            }
+                            inputMessage.Id = BitConverter.ToUInt16(messageId, 0);
+
+                            int counter = 3;
+                            var channelIdBytesList = new List<byte>();
+                            while (msgBytes[counter] != 0)
+                            {
+                                channelIdBytesList.Add(msgBytes[counter]);
+                                counter++;
+                            }
+                            inputMessage.ChannelID = Encoding.ASCII.GetString(channelIdBytesList.ToArray());
+
+                            counter++;
+                            var displayNameBytes = new List<byte>();
+                            while (msgBytes[counter] != 0)
+                            {
+                                displayNameBytes.Add(msgBytes[counter]);
+                                counter++;
+                            }
+
+                            inputMessage.DisplayName = Encoding.ASCII.GetString(displayNameBytes.ToArray());
                             break;
                         }
                     default:
