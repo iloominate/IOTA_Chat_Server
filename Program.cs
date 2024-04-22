@@ -27,7 +27,19 @@ namespace IOTA_Chat_Server
             ushort? timeout = null;
             byte retransmissions = 0;
 
-            Console.WriteLine("Parsing args");
+            // Register the Console.CancelKeyPress event handler
+            Console.CancelKeyPress += async (sender, e) =>
+            {
+                // Prevent the application from terminating immediately
+                e.Cancel = true;
+
+                // Send bye messages to all clients
+                await GracefullExit();
+
+                // Exit the application
+                Environment.Exit(0);
+            };
+
             // Parse command-line arguments
             for (int i = 0; i < args.Length; i++)
             {
@@ -217,6 +229,12 @@ namespace IOTA_Chat_Server
                 {
                     // close connection with client
                 }
+        public static async Task GracefullExit()
+        {
+            foreach (var pair in clients)
+            {
+                Message byeMsg = new Message(pair.Value.messageId++, MessageType.BYE);
+                await SendAndWaitForConfirmAsync(pair.Value, byeMsg);
             }
         }
         public static void LogMessageReceived(IPEndPoint clientEP, Message msg)
