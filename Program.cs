@@ -25,11 +25,6 @@ namespace IOTA_Chat_Server
         private static string defaultChannelId = "default"; 
         static async Task Main(string[] args)
         {
-            string? listeningIP = null;
-            ushort? serverPort = null;
-            ushort? timeout = null;
-            byte retransmissions = 0;
-
             // Register the Console.CancelKeyPress event handler
             Console.CancelKeyPress += async (sender, e) =>
             {
@@ -43,59 +38,15 @@ namespace IOTA_Chat_Server
                 Environment.Exit(0);
             };
 
-            // Parse command-line arguments
-            for (int i = 0; i < args.Length; i++)
-            {
-                switch (args[i])
-                {
-                    case "-l":
-                        listeningIP = args[++i];
-                        break;
-                    case "-p":
-                        ushort port;
-                        if (ushort.TryParse(args[++i], out port))
-                        {
-                            serverPort = port;
-                        }
-                        else
-                        {
-                            Console.Error.WriteLine("ERR: Invalid port number.");
-                            return;
-                        }
-                        break;
-                    case "-d":
-                        ushort timeoutValue;
-                        if (ushort.TryParse(args[++i], out timeoutValue))
-                        {
-                            timeout = timeoutValue;
-                        }
-                        else
-                        {
-                            Console.Error.WriteLine("ERR: Invalid timeout value.");
-                            return;
-                        }
-                        break;
-                    case "-r":
-                        byte retransmissionsValue;
-                        if (byte.TryParse(args[++i], out retransmissionsValue))
-                        {
-                            retransmissions = retransmissionsValue;
-                        }
-                        else
-                        {   
-                            Console.Error.WriteLine("ERR: Invalid retransmissions value.");
-                            return;
-                        }
-                        break;
-                    default:
-                        Console.Error.WriteLine($"ERR: Unknown option: {args[i]}");
-                        return;
-                }
-            }
+            ArgumentOptions options = ParseArguments(args);
+            if (options == null)
+                return;
+            udpRetransmissionLimit = options.Retransmissions;
+            udpRetransmissionTimeout = options.Timeout;
 
 
             UdpClient udpListener = new UdpClient();
-            udpListener.Client.Bind(new IPEndPoint(IPAddress.Parse(listeningIP??"0.0.0.0"), 4567));
+            udpListener.Client.Bind(new IPEndPoint(IPAddress.Parse(options.ListeningIP??"0.0.0.0"), 4567));
            
             TcpListener tcpListener = new TcpListener(IPAddress.Any, 4567);
 
@@ -378,6 +329,74 @@ namespace IOTA_Chat_Server
             Console.WriteLine($"SENT {clientEP.Address.ToString()}:{clientEP.Port} | {msgType} {msg.Content}");
         }
 
+        static void PrintHelp()
+        {
+            Console.WriteLine("./ipk24chat-server [<listeningIP>] [-p <port>] [-d <timeout>] [-r <retransmissions>] [-h]");
+            Console.WriteLine("Options:");
+            Console.WriteLine("  -l\t\tIP address\tServer listening IP address for welcome sockets");
+            Console.WriteLine("  -p\t\tuint16\t\tServer listening port for welcome sockets");
+            Console.WriteLine("  -d\t\tuint16\t\tUDP confirmation timeout");
+            Console.WriteLine("  -r\t\tuint8\t\tMaximum number of UDP retransmissions");
+            Console.WriteLine("  -h\t\t\t\tPrints program help output and exits");
+        }
+
+        static ArgumentOptions ParseArguments(string[] args)
+        {
+            ArgumentOptions options = new ArgumentOptions();
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-l":
+                        options.ListeningIP = args[++i];
+                        break;
+                    case "-p":
+                        ushort port;
+                        if (ushort.TryParse(args[++i], out port))
+                        {
+                            options.ServerPort = port;
+                        }
+                        else
+                        {
+                            Console.Error.WriteLine("ERR: Invalid port number.");
+                            return null;
+                        }
+                        break;
+                    case "-d":
+                        ushort timeoutValue;
+                        if (ushort.TryParse(args[++i], out timeoutValue))
+                        {
+                            options.Timeout = timeoutValue;
+                        }
+                        else
+                        {
+                            Console.Error.WriteLine("ERR: Invalid timeout value.");
+                            return null;
+                        }
+                        break;
+                    case "-r":
+                        byte retransmissionsValue;
+                        if (byte.TryParse(args[++i], out retransmissionsValue))
+                        {
+                            options.Retransmissions = retransmissionsValue;
+                        }
+                        else
+                        {
+                            Console.Error.WriteLine("ERR: Invalid retransmissions value.");
+                            return null;
+                        }
+                        break;
+                    case "-h":
+                        PrintHelp();
+                        return null;
+                    default:
+                        Console.Error.WriteLine($"ERR: Unknown option: {args[i]}");
+                        return null;
+                }
+            }
+            return options;
+        }
     }
 
 }
