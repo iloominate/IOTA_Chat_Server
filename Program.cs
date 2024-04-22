@@ -157,6 +157,8 @@ namespace IOTA_Chat_Server
                 await SendMessageToChannelAsync(client.CurrentChannelName, msg);
             }
         }
+
+
         public static async Task<bool> SendAndWaitForConfirmAsync(Client client, Message msg)
         {
             byte[] msgBytes = MessageToBytesConverter.MessageToBytes(msg);
@@ -169,11 +171,11 @@ namespace IOTA_Chat_Server
                 {
                     while (true)
                     {
-                        var confirmList = client.ClientConfirms.TakeWhile(c => c.RefId == msg.RefId);
+                        existingMessage = client.ClientConfirms.FirstOrDefault(c => c.RefId == msg.RefId);
                         existingMessage = confirmList.First();
                         if (existingMessage != null)
                             break;
-                        Task.Delay(10);
+                        Task.Delay(5);
                     }
                 });
                 Task waitForDelay = Task.Delay(udpRetransmissionTimeout);
