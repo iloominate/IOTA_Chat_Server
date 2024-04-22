@@ -229,21 +229,21 @@ namespace IOTA_Chat_Server.Converters
                     }
                 // | 0x01 | MessageID | Result | Ref_MessageID | MessageContents | 0 |
                 case MessageType.REPLY:
-                    {
+                    { 
                         bool res = message.Result ?? throw new NullReferenceException();
                         byte resultByte = res ? (byte)1 : (byte)0;
 
                         byte[] refIdBytes = new byte[2];
 
                         byte[] contentsBytes = Encoding.ASCII.GetBytes(message.Content);
+                       
                         if (BitConverter.TryWriteBytes(refIdBytes, message.RefId ?? throw new NullReferenceException("Ref id is null"))
-                            == false)
+                            == false)   
                         {
                             throw new Exception("Unable to convert message id to bytes");
                         }
 
-
-                        // null bytes = 2
+                        // null bytes = 1
                         int mLength = M_TYPE_BYTE_SIZE + ID_BYTE_SIZE + 1 + refIdBytes.Length + contentsBytes.Length + 1;
                         byte[] messageBytes = new byte[mLength];
 
@@ -257,20 +257,18 @@ namespace IOTA_Chat_Server.Converters
 
                         Array.Copy(idBytes, 0, messageBytes, arrIndex, idBytes.Length);
                         arrIndex += idBytes.Length;
-
+                        
                         messageBytes[arrIndex] = resultByte;
                         arrIndex += 1;
 
                         Array.Copy(refIdBytes, 0, messageBytes, arrIndex, refIdBytes.Length);
                         arrIndex += refIdBytes.Length;
 
-                        messageBytes[arrIndex] = 0;
-                        arrIndex += 1;
-
                         Array.Copy(contentsBytes, 0, messageBytes, arrIndex, contentsBytes.Length);
                         arrIndex += contentsBytes.Length;
 
                         messageBytes[arrIndex] = 0;
+
                         return messageBytes;
                     }
                 default:
