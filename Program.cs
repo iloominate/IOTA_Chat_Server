@@ -11,6 +11,9 @@ using System.Net.Http.Headers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using System.ComponentModel.Design;
+using System.Net.Http.Json;
+using System.Reflection;
 
 namespace IOTA_Chat_Server
 {
@@ -136,8 +139,7 @@ namespace IOTA_Chat_Server
             localEP.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
 
             Client? client = new Client(clientEP, localEP);
-            
-            clients.Enqueue(client);
+
             client.MessagesUprocessed.Add(messageParsed);
             var sender = Task.Run(() => SenderAsync(client));
             var listener = Task.Run(() => ListenerAsync(client));
@@ -156,7 +158,6 @@ namespace IOTA_Chat_Server
                 bool confirmArrived = await SendAndWaitForConfirmAsync(client, msg);
             } else
             {
-                client.CurrentChannelName = channelId;
                 // Send Reply
                 Message replyMessage = new Message(client.messageId++, MessageType.REPLY);
                 replyMessage.Result = true;
@@ -165,12 +166,29 @@ namespace IOTA_Chat_Server
                 bool confirmArrived = await SendAndWaitForConfirmAsync(client, replyMessage);
 
 
-                // Broadcast join message
+                // Check if user was in the channel before
+                if (client.CurrentChannelName != null)
+                {
+                    // Create left message
+                    Message msgLeft = new Message(client.messageId++, MessageType.MSG);
+                    msgLeft.Content = $"{client.Displayname} has left {client.CurrentChannelName}.";
+                    msgLeft.DisplayName = client.Displayname;
+                    // Broadcast left message
+                    await SendMessageToChannelAsync(client, msgLeft);
+                }
+
                 client.CurrentChannelName = channelId;
-                Message msg = new Message(client.messageId++, MessageType.MSG);
-                msg.Content = $"{client.Displayname} has joined {channelId}.";
-                msg.DisplayName = client.Displayname;
-                await SendMessageToChannelAsync(client.CurrentChannelName, msg);
+
+                // Create join message
+                client.CurrentChannelName = channelId;
+                Message msgJoin = new Message(client.messageId++, MessageType.MSG);
+                msgJoin.Content = $"{client.Displayname} has joined {channelId}.";
+                msgJoin.DisplayName = client.Displayname;
+
+                // Send join message to original sender 
+                await SendAndWaitForConfirmAsync(client, msgJoin);
+                // Broadcast join message
+                await SendMessageToChannelAsync(client, msgJoin);
             }
         }
 
@@ -190,19 +208,7 @@ namespace IOTA_Chat_Server
                 Task delay = Task.Delay(udpRetransmissionTimeout); 
                 Task firstCompleted = await Task.WhenAny(getConfirm, delay); 
                 if (firstCompleted == getConfirm && getConfirm.IsCompletedSuccessfully && existingMessage != null)
-                    {
-                        existingMessage = client.ClientConfirms.FirstOrDefault(c => c.RefId == msg.RefId);
-                        existingMessage = confirmList.First();
-                        if (existingMessage != null)
-                            break;
-                        Task.Delay(5);
-                    }
-                });
-                Task waitForDelay = Task.Delay(udpRetransmissionTimeout);
-                Task firstCompleted = await Task.WhenAny(getResponse, waitForDelay);
-                if (getResponse.IsCompletedSuccessfully && existingMessage != null)
                 {
-
                     return true;
                 }
             }
@@ -222,7 +228,7 @@ namespace IOTA_Chat_Server
     
             var recipients = clients.Where(pair => pair.Value.CurrentChannelName == sender.CurrentChannelName);
 
-            foreach (Client recipient in recipients)
+            foreach (var pair in recipients)
             {
                 // Ingore the sender
                 if (pair.Value == sender) continue;
@@ -242,6 +248,10 @@ namespace IOTA_Chat_Server
                 await SendAndWaitForConfirmAsync(pair.Value, byeMsg);
             }
         }
+        public static async Task GracefullFinishClient(UdpClient server, IPEndPoint clientEP)
+        {
+        }
+
         public static void LogMessageReceived(IPEndPoint clientEP, Message msg)
         {
 
@@ -270,10 +280,10 @@ namespace IOTA_Chat_Server
                     if (client.ServerConfirmIds.Any(id => id == newMessage.Id) == false)
                     {
                         client.ServerConfirmIds.Add(newMessage.Id);
-                client.MessagesUprocessed.Add(newMessage);
+                        client.MessagesUprocessed.Add(newMessage);
+                    }    
+                }
             }
-        }
-        }
         }
 
         public static async Task SenderAsync(Client client)
@@ -284,7 +294,6 @@ namespace IOTA_Chat_Server
                 if (client.MessagesUprocessed.Count > 0)
                 {
                     Message messageToProcess = client.MessagesUprocessed.Take();
-                    LogMessageReceived(client.ClientEndPoint, messageToProcess);
 
                     await SendConfirmAsync(messageToProcess.Id, client.ServerEndPoint, client.ClientEndPoint);
                     switch (messageToProcess.Type)
@@ -312,8 +321,6 @@ namespace IOTA_Chat_Server
                                     if (messageToProcess.DisplayName != null)
                                         client.Displayname = messageToProcess.DisplayName;
                                     await SendMessageToChannelAsync(client, messageToProcess);
-                                {
-                                    // ignore 
                                 }
                                 break;
                             }
@@ -321,19 +328,28 @@ namespace IOTA_Chat_Server
                             {
                                 if (client.State == ClientState.AUTH)
                                 {
-
-                                }
-                                else
-                                {
-                                    // ignore
+                                    await HandleJoinAsync(client, messageToProcess.ChannelID, messageToProcess.Id, "You joined channel");
                                 }
                                 break;
                             }
                         case MessageType.BYE:
                             {
-                                // Send confirm, send buy, close connection
+
+
+                                // Check if user was in the channel before
+                                if (client.CurrentChannelName != null)
+                                {
+                                    // Create left message
+                                    Message msgLeft = new Message(client.messageId++, MessageType.MSG);
+                                    msgLeft.Content = $"{client.Displayname} has left {client.CurrentChannelName}.";
+                                    msgLeft.DisplayName = client.Displayname;
+                                    // Broadcast left message
+                                    await SendMessageToChannelAsync(client, msgLeft);
+                                }
+                                // Remove client
+                                clients.TryRemove(client.Username, out _);
+
                                 return;
-                                break;
                             }
                         case MessageType.CONFIRM:
                             {
@@ -342,7 +358,24 @@ namespace IOTA_Chat_Server
                             }
                         case MessageType.ERR:
                             {
-                                // Gracefully exit by sending BYE
+                                
+                                // Send bye
+                                Message byeMsg = new Message(client.messageId++, MessageType.BYE);
+                                await SendAndWaitForConfirmAsync(client, byeMsg);
+
+                                // Check if user was in the channel before
+                                if (client.CurrentChannelName != null)
+                                {
+                                    // Create left message
+                                    Message msgLeft = new Message(client.messageId++, MessageType.MSG);
+                                    msgLeft.Content = $"{client.Displayname} has left {client.CurrentChannelName}.";
+                                    msgLeft.DisplayName = client.Displayname;
+                                    // Broadcast left message
+                                    await SendMessageToChannelAsync(client, msgLeft);
+                                }
+
+                                // Remove client
+                                clients.TryRemove(client.Username, out _);
                                 return;
                             }
                     }
