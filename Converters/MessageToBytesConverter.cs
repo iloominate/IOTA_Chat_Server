@@ -1,5 +1,7 @@
-﻿using IOTA_Chat_Server.Models;
+﻿using IOTA_Chat_Server.Exceptions;
+using IOTA_Chat_Server.Models;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -121,7 +123,6 @@ namespace IOTA_Chat_Server.Converters
                     {
                         byte[] displaynameBytes = Encoding.ASCII.GetBytes(message.DisplayName);
                         byte[] contentsBytes = Encoding.ASCII.GetBytes(message.Content);
-
                         // null bytes = 2
                         int mLength = M_TYPE_BYTE_SIZE + ID_BYTE_SIZE + 2 + displaynameBytes.Length + contentsBytes.Length;
                         byte[] messageBytes = new byte[mLength];
@@ -148,6 +149,7 @@ namespace IOTA_Chat_Server.Converters
 
                         messageBytes[arrIndex] = 0;
                         return messageBytes;
+                        
                     }
                 // |  0xFE  |    MessageID    |  DisplayName  | 0 |  MessageContents  | 0 |
                 case MessageType.ERR:
@@ -346,13 +348,15 @@ namespace IOTA_Chat_Server.Converters
                             }
                             inputMessage.Id = BitConverter.ToUInt16(msgId, 0);
 
-                            var displayNameBytes = new byte[] { };
+                            var displayNameBytesList = new List<byte>();
                             int counter = 3;
                             while (msgBytes[counter] != 0)
                             {
-                                displayNameBytes.Append(msgBytes[counter]);
+                                displayNameBytesList.Add(msgBytes[counter]);
                                 counter++;
                             }
+                            inputMessage.DisplayName = Encoding.ASCII.GetString(displayNameBytesList.ToArray());
+
                             counter++;
                             int contentLength = msgBytes.Length - counter - 1;
                             inputMessage.Content = Encoding.ASCII.GetString(msgBytes, counter, contentLength);
@@ -369,14 +373,15 @@ namespace IOTA_Chat_Server.Converters
                             };
                             inputMessage.Id = BitConverter.ToUInt16(msgId, 0);
 
-                            var displayNameBytes = new byte[] { };
+                            var displayNameBytesList = new List<byte>();
                             int counter = 3;
                             while (msgBytes[counter] != 0)
                             {
-                                displayNameBytes.Append(msgBytes[counter]);
+                                displayNameBytesList.Add(msgBytes[counter]);
                                 counter++;
                             }
                             counter++;
+                            inputMessage.DisplayName = Encoding.ASCII.GetString(displayNameBytesList.ToArray());
                             int contentLength = msgBytes.Length - counter - 1;
                             inputMessage.Content = Encoding.ASCII.GetString(msgBytes, counter, contentLength);
                             break;
@@ -392,6 +397,46 @@ namespace IOTA_Chat_Server.Converters
                             inputMessage.Id = BitConverter.ToUInt16(messageId, 0);
                             break;
                         }
+                    // |  0x02  |    MessageID    |  Username  | 0 |  DisplayName  | 0 |  Secret  | 0 |
+                    case MessageType.AUTH:
+                        {
+                            byte[] messageId = new byte[] { msgBytes[1], msgBytes[2] };
+                            if (BitConverter.IsLittleEndian)
+                            {
+                                // Reverse the byte order
+                                Array.Reverse(messageId);
+                            }
+                            inputMessage.Id = BitConverter.ToUInt16(messageId, 0);
+
+                            int counter = 3;
+                            var userNameBytesList = new List<byte>();
+                            while (msgBytes[counter] != 0)
+                            {
+                                userNameBytesList.Add(msgBytes[counter]);
+                                counter++;
+                            }
+                            inputMessage.Username = Encoding.ASCII.GetString(userNameBytesList.ToArray());
+
+                            counter++;
+                            var displayNameBytes = new List<byte>();
+                            while (msgBytes[counter] != 0)
+                            {
+                                displayNameBytes.Add(msgBytes[counter]);
+                                counter++;
+                            }
+                            
+                            inputMessage.DisplayName = Encoding.ASCII.GetString(displayNameBytes.ToArray());
+                            
+                            counter++;
+                            var sercretBytes = new List<byte>();
+                            while (msgBytes[counter] != 0)
+                            {
+                                sercretBytes.Add(msgBytes[counter]);
+                                counter++;
+                            }
+                            inputMessage.Secret = Encoding.ASCII.GetString(sercretBytes.ToArray());
+                            break;
+                        }
                     default:
                         {
                             throw new Exception(message: "ERR: Unrecognizable packet format");
@@ -400,7 +445,8 @@ namespace IOTA_Chat_Server.Converters
             }
             catch (Exception ex)
             {
-                // Wrong packet format
+
+                throw new MessageConvertException();
             }
             return inputMessage;
         }
