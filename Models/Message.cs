@@ -22,7 +22,7 @@ namespace IOTA_Chat_Server.Models
         [MaxLength(1400)]
         public string? Content { get; set; }
         [MaxLength(20)]
-        public ushort? ChannelID { get; set; }
+        public string? ChannelID { get; set; }
         public ushort? RefId { get; set; }
         public Message(ushort id, MessageType type)
         {
