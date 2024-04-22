@@ -128,7 +128,6 @@ namespace IOTA_Chat_Server
             clients.Enqueue(client);
             client.MessagesUprocessed.Add(messageParsed);
             var sender = Task.Run(() => SenderAsync(client));
-            client.Exit = true;
             var listener = Task.Run(() => ListenerAsync(client));
         }
 
@@ -166,15 +165,19 @@ namespace IOTA_Chat_Server
 
         public static async Task<bool> SendAndWaitForConfirmAsync(Client client, Message msg)
         {
+
             byte[] msgBytes = MessageToBytesConverter.MessageToBytes(msg);
             for (int i = 0; i < udpRetransmissionLimit + 1; i++)
             {
                 await client.ServerEndPoint.SendAsync(msgBytes, client.ClientEndPoint);
                 LogMessageSent(client.ClientEndPoint, msg);
+
                 Message? existingMessage = null;
-                Task getResponse = Task.Run(() =>
-                {
-                    while (true)
+
+                Task getConfirm = Task.Run(() => { existingMessage = client.ClientConfirms.Take(); });  
+                Task delay = Task.Delay(udpRetransmissionTimeout); 
+                Task firstCompleted = await Task.WhenAny(getConfirm, delay); 
+                if (firstCompleted == getConfirm && getConfirm.IsCompletedSuccessfully && existingMessage != null)
                     {
                         existingMessage = client.ClientConfirms.FirstOrDefault(c => c.RefId == msg.RefId);
                         existingMessage = confirmList.First();
@@ -242,7 +245,6 @@ namespace IOTA_Chat_Server
                 else
                 {
                 client.MessagesUprocessed.Add(newMessage);
-
             }
         }
         }
@@ -267,7 +269,6 @@ namespace IOTA_Chat_Server
                                     {
                                         client.Username = messageToProcess.Username;
                                     }
-                                    client.Displayname = messageToProcess.DisplayName;
 
                                     client.Displayname = messageToProcess.DisplayName;
                                     await HandleJoinAsync(client, defaultChannelId, messageToProcess.Id, "Success! You are authenticated");
