@@ -27,7 +27,7 @@ namespace IOTA_Chat_Server.Models
 
         public Client(IPEndPoint clientEP, UdpClient serverEP)
         { 
-            CurrentChannelName = "Default";
+            CurrentChannelName = null;
             ClientEndPoint = clientEP;
             ServerEndPoint = serverEP;
             ClientConfirms = new BlockingCollection<Message>();

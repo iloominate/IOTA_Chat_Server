@@ -129,7 +129,34 @@ namespace IOTA_Chat_Server
             var listener = Task.Run(() => ListenerAsync(client));
         }
 
+        static async Task HandleJoinAsync(Client client, string channelId, ushort refId, string replyContent)
+        {
+            // Check if broadcasting is needed
+            if (client.CurrentChannelName == channelId)
+            {
+                // Send Reply
+                Message msg = new Message(client.messageId++, MessageType.REPLY);
+                msg.Result = true;
+                msg.Content = "You are already in this channel";
+                msg.RefId = refId;
+                bool confirmArrived = await SendAndWaitForConfirmAsync(client, msg);
+            } else
+            {
+                // Send Reply
+                Message replyMessage = new Message(client.messageId++, MessageType.REPLY);
+                replyMessage.Result = true;
+                replyMessage.Content = replyContent;
+                replyMessage.RefId = refId;
+                bool confirmArrived = await SendAndWaitForConfirmAsync(client, replyMessage);
 
+                // Broadcast join message
+                client.CurrentChannelName = channelId;
+                Message msg = new Message(client.messageId++, MessageType.MSG);
+                msg.Content = $"{client.Displayname} has joined {channelId}.";
+                msg.DisplayName = client.Displayname;
+                await SendMessageToChannelAsync(client.CurrentChannelName, msg);
+            }
+        }
         public static async Task<bool> SendAndWaitForConfirmAsync(Client client, Message msg)
         {
             byte[] msgBytes = MessageToBytesConverter.MessageToBytes(msg);
