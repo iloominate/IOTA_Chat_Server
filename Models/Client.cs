@@ -16,6 +16,7 @@ namespace IOTA_Chat_Server.Models
         public string? CurrentChannelName { get; set; }
         public IPEndPoint ClientEndPoint { get; set; }
         public BlockingCollection<Message> ClientConfirms { get; set; }
+        public BlockingCollection<ushort> ServerConfirmIds { get; set; }
         public BlockingCollection<Message> MessagesUprocessed { get; set; }
         public BlockingCollection<byte> BytesSent { get; set; }
         public UdpClient ServerEndPoint { get; set; }
@@ -30,6 +31,7 @@ namespace IOTA_Chat_Server.Models
             CurrentChannelName = null;
             ClientEndPoint = clientEP;
             ServerEndPoint = serverEP;
+            ServerConfirmIds = new BlockingCollection<ushort>();
             ClientConfirms = new BlockingCollection<Message>();
             MessagesUprocessed = new BlockingCollection<Message>();
             BytesSent = new BlockingCollection<byte>();
